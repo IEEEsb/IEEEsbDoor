@@ -205,7 +205,7 @@ public class DBManager {
 			resultSet.close();
 			connection.close();
 		} catch (Exception e) {
-			Log.LogError(Log.SUBTYPE.DOORDB, "Error de base de datos: " + e.getMessage());
+			Log.LogError(Log.SUBTYPE.FRIDGEDB, "Error de base de datos: " + e.getMessage());
 		} 
 		return credit;
 	}
