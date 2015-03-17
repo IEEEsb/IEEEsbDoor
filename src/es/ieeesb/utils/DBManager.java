@@ -20,6 +20,7 @@ public class DBManager {
 	private static Connection connection;
 	private static final String USER_IN_DB = "SELECT * FROM doorUsers WHERE dni=?";
 	private static final String TOKEN_IN_DB = "SELECT * FROM doorTokens WHERE Token=? AND DNI=?";
+	private static final String USER_FROM_DNI = "SELECT Name FROM doorUsers WHERE dni=?";
 	private static final String USER_DNI_FROM_REGID = "SELECT dni FROM doorUsers WHERE RegistrationID=?";
 	private static final String USER_CREDIT = "SELECT credit FROM users WHERE dni=?";
 	private static final String USER_REG_VALID = "SELECT dni FROM doorUsers WHERE RegistrationID=? AND IDUsed='0' AND dni=?";
@@ -186,6 +187,28 @@ public class DBManager {
 			Log.LogError(Log.SUBTYPE.DOORDB, "Error de base de datos: " + e.getMessage());
 		} 
 		return userFound;
+	}
+	
+	public static String getUserFromDNI( String DNI ) {
+		try {
+			Class.forName( "com.mysql.jdbc.Driver" );
+			connection = DriverManager.getConnection(DOORDB_ADDRESS, DOORDB_USERNAME, DOORDB_PASSWORD);
+			PreparedStatement preparedStatment = connection.prepareStatement( USER_FROM_DNI );
+			String dni = DNI.trim();
+			preparedStatment.setString(1, dni);
+			ResultSet resultSet = preparedStatment.executeQuery();
+			String userName = null;
+			if(resultSet.next())
+			{
+				userName = resultSet.getString(1);
+			}
+			resultSet.close();
+			connection.close();
+			return userName;
+		} catch (Exception e) {
+			Log.LogError(Log.SUBTYPE.DOORDB, "Error de base de datos: " + e.getMessage());
+			return null;
+		} 
 	}
 	
 	public static double checkUserCredit(String userIdentification)

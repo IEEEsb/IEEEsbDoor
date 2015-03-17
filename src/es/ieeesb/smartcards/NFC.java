@@ -1,96 +1,77 @@
 package es.ieeesb.smartcards;
 
-
-import java.util.List;
-
-import javax.smartcardio.Card;
-import javax.smartcardio.CardChannel;
-import javax.smartcardio.CardException;
-import javax.smartcardio.CardTerminal;
-import javax.smartcardio.CommandAPDU;
-import javax.smartcardio.ResponseAPDU;
-import javax.smartcardio.TerminalFactory;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.Reader;
 
 import es.ieeesb.ieeesbdoor.Main;
 import es.ieeesb.utils.DBManager;
 import es.ieeesb.utils.Log;
+import es.ieeesb.utils.PropertiesManager;
 import es.ieeesb.utils.Usuario;
+
 /**
- * @author Gregorio
- * Handler that controls NFC authentication. Work in progress
+ * @author Gregorio Handler that controls NFC authentication. Work in progress
  */
 
-public class NFC implements Runnable {
-
-	public static final char[] hexArray = "0123456789ABCDEF".toCharArray();
-	public static final String CARDREADER = "OMNIKEY CardMan 5x21-CL 0";
-	
-	public static CardTerminal terminal;
-
-	public static String bytesToHex(byte[] bytes) {
-		char[] hexChars = new char[bytes.length * 2];
-		int v;
-		for (int j = 0; j < bytes.length; j++) {
-			v = bytes[j] & 0xFF;
-			hexChars[j * 2] = hexArray[v >>> 4];
-			hexChars[j * 2 + 1] = hexArray[v & 0x0F];
-		}
-		return new String(hexChars);
-	}
-	
+public class NFC implements Runnable
+{
+	private String baseDir;
 	/**
 	 * Constructor. Looks for Smartcard readers.
 	 */
 	public NFC()
 	{
 		Log.LogEvent(Log.SUBTYPE.NFC, "Inicializando sistema de acceso por NFC");
-		terminal = null;
-		TerminalFactory factory;
-		try 
+		if(Main.isWindows())
 		{
-			factory = TerminalFactory.getInstance("PC/SC", null);
-			List<CardTerminal> terminals = factory.terminals().list();
-			if (terminals.isEmpty()) 
-			{
-				throw new Exception("Lector no disponible");
-			}
-			
-			for (CardTerminal terminalSelection : terminals) 
-			{
-				if (terminalSelection.getName().equals(CARDREADER))
-					terminal = terminalSelection;
-			}
-		} 
-		catch (Exception e) 
+			baseDir = System.getProperty("user.dir");
+			Log.LogEvent(Log.SUBTYPE.NFC, "Sistema Windows detectado");
+		}
+		else
 		{
-			Log.LogError(Log.SUBTYPE.NFC, "Error de NFC: " + e.getMessage());
+			File currentDir = null;
+			try
+			{
+				currentDir = new File("./").getCanonicalFile();
+			}
+			catch (IOException e)
+			{
+				e.printStackTrace();
+			}
+			baseDir = currentDir.getAbsolutePath();
+			Log.LogEvent(Log.SUBTYPE.NFC, "Sistema Unix detectado");
 		}
 	}
 
-	/* 
-	 * Continuosly tries to read the smartcard reader and opens the door if it should. Also checks users's Latch.
+	/*
+	 * Continuosly tries to read the smartcard reader and opens the door if it
+	 * should. Also checks users's Latch.
 	 */
-	public void run() 
+	public void run()
 	{
-		while (true) 
+		while (true)
 		{
-			try {
+			try
+			{
 				Usuario usuarioEntrante = leerNFC();
-				if (usuarioEntrante != null) 
+				if (usuarioEntrante != null)
 				{
-					if(DBManager.isUserInDatabase(usuarioEntrante.dni))
+					if (DBManager.isTokenInDatabase(usuarioEntrante))
 					{
-						if(!DBManager.isUsingLatch(usuarioEntrante.dni) || Main.latch.checkLatch(usuarioEntrante))
+						if (!DBManager.isUsingLatch(usuarioEntrante.dni)
+								|| Main.latch.checkLatch(usuarioEntrante))
 						{
-							Log.LogEvent(Log.SUBTYPE.NFC, "Acceso autorizado a "
-									+ usuarioEntrante.toString());
+							Log.LogEvent(Log.SUBTYPE.NFC,
+									"Acceso autorizado a " + usuarioEntrante.toString());
 							Main.openDoor(usuarioEntrante);
 						}
 					}
 					else
 					{
-						Log.LogEvent(Log.SUBTYPE.NFC, "Acceso denegado a "
-								+ usuarioEntrante.toString());
+						Log.LogEvent(Log.SUBTYPE.NFC,
+								"Acceso denegado a " + usuarioEntrante.toString());
 					}
 					try
 					{
@@ -98,14 +79,15 @@ public class NFC implements Runnable {
 					}
 					catch (InterruptedException e)
 					{
-						Log.LogError(Log.SUBTYPE.DNI, "Error en el hilo de autenticación por NFC: " + e.getMessage());
+						Log.LogError(Log.SUBTYPE.DNI, "Error en el hilo de autenticación por NFC: "
+								+ e.getMessage());
 					}
 				}
 
-			} 
-			catch (Exception e) 
+			}
+			catch (Exception e)
 			{
-				
+
 			}
 
 		}
@@ -115,28 +97,30 @@ public class NFC implements Runnable {
 	 * @return
 	 * @throws Exception
 	 */
-	public Usuario leerNFC() throws Exception 
+	public Usuario leerNFC()
 	{
-		terminal.waitForCardPresent(0);
-		try 
+		try
 		{
-			Card card = terminal.connect("*");
-			CardChannel channel = card.getBasicChannel();
-
-			CommandAPDU command = new CommandAPDU(new byte[] { (byte) 0xFF,
-					(byte) 0xB0, (byte) 0x00, (byte) 0x03, (byte) 0x10 });
-			ResponseAPDU response = channel.transmit(command);
-
-			byte[] byteArray = response.getBytes();
-			byte[] trimmed = new byte[10];
-			for (int i = 0; i < trimmed.length - 1; i++) {
-				trimmed[i] = byteArray[i + 1];
+			ProcessBuilder pb = new ProcessBuilder("python", baseDir + PropertiesManager.getProperty("scriptFile"));
+			pb.redirectErrorStream(true);
+			Process proc;
+			proc = pb.start();
+			Reader reader = new InputStreamReader(proc.getInputStream());
+			int ch;
+			StringBuilder strBuilder = new StringBuilder();
+			while ((ch = reader.read()) != -1)
+			{
+				strBuilder.append((char)ch);
 			}
-			String result = new String(trimmed, "UTF-8");
-			result = result.substring(0, 9);
-			return new Usuario(result, "");
-		} 
-		catch (CardException e) 
+			String dni = strBuilder.toString().substring(0, strBuilder.indexOf("&"));
+			String token = strBuilder.toString().substring(strBuilder.indexOf("&")+1, strBuilder.length()-1);
+			String username = DBManager.getUserFromDNI(dni);
+			Usuario user = new Usuario(dni, username);
+			user.token = token;
+			reader.close();
+			return user;
+		}
+		catch (Exception e)
 		{
 			Log.LogError(Log.SUBTYPE.NFC, "Error leyendo NFC: " + e.getMessage());
 			return null;
